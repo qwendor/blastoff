@@ -160,7 +160,9 @@
       <div><b>E</b> shockwave: blasts everyone near you away &nbsp; <b>TAB</b> hold for scores</div>
       <div><b>PADS</b> yellow pads launch you high &nbsp; <b>ORBS</b> wings (+jumps), speed, shield, heal</div>
       <div><b>🎮</b> controller: sticks move/aim, A jump, RT blast, LT rocket, X dash, Y boost, B shock</div>
+      <div><b>🌐</b> online: host stays in the lobby, friend enters the code. Stuck connecting? Same Wi-Fi or a phone hotspot fixes strict networks</div>
     </div>
+    <div class="small">Soundtrack is a built-in phonk beat (M mutes). Put a <b>music.mp3</b> next to the game file to play your own track instead.</div>
     <div class="small">There's no health. Hits raise KNOCK %, and knockback scales with it. Fall below the arena and you're KO'd. Most KOs when time runs out wins. Falling with nobody to blame costs a point.</div>
     <div class="row" style="margin-top:12px"><button class="btn ghost" data-back>BACK</button></div>
   </div>
@@ -225,7 +227,8 @@ const ROCKET_R=5.2, WAVE_R=6;
 
 // ============================================================ audio
 const AUD={ctx:null,muted:false,musicOn:true,nextBar:0,bar:0,
-  init(){ if(this.ctx)return; try{ this.ctx=new (window.AudioContext||window.webkitAudioContext)(); this.master=this.ctx.createGain(); this.master.gain.value=.5; const comp=this.ctx.createDynamicsCompressor(); this.master.connect(comp); comp.connect(this.ctx.destination); const nb=this.ctx.createBuffer(1,this.ctx.sampleRate,this.ctx.sampleRate); const d=nb.getChannelData(0); for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1; this.noise=nb; }catch(e){} },
+  init(){ if(this.ctx)return; try{ this.ctx=new (window.AudioContext||window.webkitAudioContext)(); this.master=this.ctx.createGain(); this.master.gain.value=.5; const comp=this.ctx.createDynamicsCompressor(); this.master.connect(comp); comp.connect(this.ctx.destination); const nb=this.ctx.createBuffer(1,this.ctx.sampleRate,this.ctx.sampleRate); const d=nb.getChannelData(0); for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1; this.noise=nb; }catch(e){}
+    try{ const a=new Audio('music.mp3'); a.loop=true; a.volume=.55; a.addEventListener('canplaythrough',()=>{this.fileOk=true;},{once:true}); a.addEventListener('error',()=>{this.fileOk=false;}); this.file=a; }catch(e){} },
   resume(){ if(this.ctx&&this.ctx.state==='suspended')this.ctx.resume(); },
   tone(f0,f1,dur,type='square',vol=.2,t=0){ if(!this.ctx||this.muted)return; const c=this.ctx,o=c.createOscillator(),g=c.createGain(),t0=c.currentTime+t; o.type=type; o.frequency.setValueAtTime(f0,t0); o.frequency.exponentialRampToValueAtTime(Math.max(20,f1),t0+dur); g.gain.setValueAtTime(vol,t0); g.gain.exponentialRampToValueAtTime(.001,t0+dur); o.connect(g); g.connect(this.master); o.start(t0); o.stop(t0+dur+.02); },
   hiss(dur,vol=.2,fc=2000,fe=300,t=0){ if(!this.ctx||this.muted)return; const c=this.ctx,s=c.createBufferSource(),g=c.createGain(),f=c.createBiquadFilter(),t0=c.currentTime+t; s.buffer=this.noise; f.type='lowpass'; f.frequency.setValueAtTime(fc,t0); f.frequency.exponentialRampToValueAtTime(fe,t0+dur); g.gain.setValueAtTime(vol,t0); g.gain.exponentialRampToValueAtTime(.001,t0+dur); s.connect(f); f.connect(g); g.connect(this.master); s.start(t0); s.stop(t0+dur+.02); },
@@ -247,14 +250,34 @@ const AUD={ctx:null,muted:false,musicOn:true,nextBar:0,bar:0,
     case 'start': this.tone(300,300,.1,'square',.15); this.tone(400,400,.1,'square',.15,.12); this.tone(600,600,.3,'square',.15,.24); break;
     case 'end': this.tone(500,500,.15,'square',.18); this.tone(400,400,.15,'square',.18,.18); this.tone(300,300,.5,'square',.18,.36); break;
   } },
-  music(dt){ if(!this.ctx||this.muted||!this.musicOn||state!=='game')return; const c=this.ctx; const bpm=128, beat=60/bpm, barLen=beat*4;
-    if(this.nextBar<c.currentTime)this.nextBar=c.currentTime+.05;
-    while(this.nextBar<c.currentTime+.4){
-      const roots=[45,41,48,43]; const r=roots[this.bar%4]; const t=this.nextBar;
-      for(let i=0;i<8;i++){ const st=t+i*beat/2; const arp=[0,7,12,7,3,7,12,15][i]; const f=440*Math.pow(2,(r+12+arp-69)/12); this.tone(f,f,.16,'square',.035,st-c.currentTime); }
-      for(let i=0;i<4;i++){ const st=t+i*beat; const f=440*Math.pow(2,(r-12-69)/12); this.tone(f,f*.98,.4,'sawtooth',.07,st-c.currentTime); this.hiss(.05,.06,6000,4000,st-c.currentTime+beat/2); this.tone(90,40,.18,'sine',.25,st-c.currentTime); }
-      this.nextBar+=barLen; this.bar++;
-    } }
+  // ---- PHONK soundtrack: 142 BPM halftime drums, sliding distorted 808s, cowbell hook in E minor, dark pad.
+  // Drop a music.mp3 next to this file to play your own track instead (loops automatically).
+  music(dt){
+    const playing=this.ctx&&!this.muted&&this.musicOn&&state==='game';
+    if(this.file){ if(playing&&this.fileOk){ if(this.file.paused)this.file.play().catch(()=>{}); return; } if(!this.file.paused)this.file.pause(); }
+    if(!playing)return;
+    const c=this.ctx, st=60/142/4;
+    if(this.nextStep===undefined||this.nextStep<c.currentTime-1){ this.nextStep=c.currentTime+.05; this.step=0; }
+    while(this.nextStep<c.currentTime+.3){ this.phonkStep(this.step,this.nextStep-c.currentTime); this.step++; this.nextStep+=st; }
+  },
+  phonkStep(i,at){
+    const s=i%16, bar=Math.floor(i/16), b8=bar%8, b2=bar%2, fill=b8%4===3;
+    const N=n=>440*Math.pow(2,(n-69)/12);
+    if(s===0||s===7||s===10||(fill&&s===13))this.kick(at);
+    if(s===8||(fill&&(s===13||s===15)))this.snare(at,s===8?1:.5);
+    if(s%2===0)this.hat(at,.16,(s===6||s===14)?.16:.04); else if((b2===1&&s>=12)||(fill&&s>=8))this.hat(at,.09,.03);
+    const bassA={0:40,7:40,10:43}, bassB={0:38,7:38,10:35,14:40};
+    const bn=(b2===0?bassA:bassB)[s]; if(bn!==undefined)this.bass808(N(bn),at,s===10?.8:1.1);
+    if(b8<4||b8>=6){ const hookA={0:76,2:76,3:79,6:76,8:74,10:71,12:74,14:76}, hookB={0:79,2:79,3:81,6:79,8:76,10:74,12:71,14:74}; const cn=(b2===0?hookA:hookB)[s]; if(cn!==undefined)this.cowbell(N(cn),at); }
+    if(s===0){ const ch=b2===0?[52,55,59]:[50,54,57]; for(const n of ch)this.pad(N(n),at,60/142*4); }
+  },
+  kick(at){ this.tone(170,42,.32,'sine',.9,at); this.hiss(.03,.25,4000,800,at); },
+  snare(at,v=1){ this.hiss(.18,.45*v,3000,1200,at); this.tone(200,120,.1,'triangle',.3*v,at); },
+  hat(at,v,dur){ if(!this.ctx||this.muted)return; const c=this.ctx,s=c.createBufferSource(),g=c.createGain(),f=c.createBiquadFilter(),t0=c.currentTime+at; s.buffer=this.noise; f.type='highpass'; f.frequency.value=8500; g.gain.setValueAtTime(v,t0); g.gain.exponentialRampToValueAtTime(.001,t0+dur); s.connect(f); f.connect(g); g.connect(this.master); s.start(t0); s.stop(t0+dur+.02); },
+  cowbell(freq,at){ if(!this.ctx||this.muted)return; const c=this.ctx,t0=c.currentTime+at,g=c.createGain(),f=c.createBiquadFilter(); f.type='bandpass'; f.frequency.value=freq*1.25; f.Q.value=1.2; g.gain.setValueAtTime(.22,t0); g.gain.exponentialRampToValueAtTime(.001,t0+.16); for(const r of [1,1.48]){ const o=c.createOscillator(); o.type='square'; o.frequency.value=freq*r; o.connect(f); o.start(t0); o.stop(t0+.2); } f.connect(g); g.connect(this.shaper()); },
+  bass808(freq,at,dur){ if(!this.ctx||this.muted)return; const c=this.ctx,t0=c.currentTime+at,o=c.createOscillator(),g=c.createGain(); o.type='sine'; o.frequency.setValueAtTime(freq*2,t0); o.frequency.exponentialRampToValueAtTime(freq,t0+.06); g.gain.setValueAtTime(.7,t0); g.gain.setValueAtTime(.7,t0+.1); g.gain.exponentialRampToValueAtTime(.001,t0+dur); o.connect(g); g.connect(this.shaper()); o.start(t0); o.stop(t0+dur+.02); },
+  pad(freq,at,dur){ if(!this.ctx||this.muted)return; const c=this.ctx,t0=c.currentTime+at,g=c.createGain(),f=c.createBiquadFilter(); f.type='lowpass'; f.frequency.value=700; g.gain.setValueAtTime(0,t0); g.gain.linearRampToValueAtTime(.03,t0+.3); g.gain.linearRampToValueAtTime(0,t0+dur); for(const d of [-6,6]){ const o=c.createOscillator(); o.type='sawtooth'; o.frequency.value=freq; o.detune.value=d; o.connect(f); o.start(t0); o.stop(t0+dur+.05); } f.connect(g); g.connect(this.master); },
+  shaper(){ if(!this._sh){ const n=1024,cv=new Float32Array(n); for(let i=0;i<n;i++){ const x=i*2/n-1; cv[i]=Math.tanh(x*2.5)/Math.tanh(2.5); } const ws=this.ctx.createWaveShaper(); ws.curve=cv; const g=this.ctx.createGain(); g.gain.value=.6; ws.connect(g); g.connect(this.master); this._sh=ws; } return this._sh; }
 };
 
 // ============================================================ renderer / scene
@@ -604,7 +627,11 @@ function updateCamera(dt,t){
 }
 
 // ============================================================ net
-const PEER_OPTS={debug:0,config:{iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun.cloudflare.com:3478'},{urls:'stun:stun1.l.google.com:19302'}]}};
+// Online play connects players directly (WebRTC). Some networks (campus Wi-Fi, some phone carriers) block direct connections;
+// a TURN relay fixes that. Free option: sign up at https://www.metered.ca/stun-turn (50GB/month), then paste its "turn:" entries here, e.g.
+// const TURN=[{urls:'turn:global.relay.metered.ca:80',username:'...',credential:'...'},{urls:'turn:global.relay.metered.ca:443?transport=tcp',username:'...',credential:'...'}];
+const TURN=[];
+const PEER_OPTS={debug:0,config:{iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun.cloudflare.com:3478'},{urls:'stun:stun1.l.google.com:19302'},...TURN]}};
 const NET={on:false,isHost:false,peer:null,conns:[],hostConn:null,id:null,code:null,name:'PILOT',color:0,lobby:[],sendT:0,late:false};
 function genCode(){ const a='ABCDEFGHJKLMNPQRSTUVWXYZ'; let s=''; for(let i=0;i<4;i++)s+=a[Math.floor(Math.random()*a.length)]; return s; }
 function setStatus(s){ $('status').textContent=s; }
@@ -621,10 +648,13 @@ function netJoin(code){
   code=code.toUpperCase().trim(); if(code.length!==4){setStatus('Enter the 4-letter code');return;}
   setStatus('Connecting…'); const peer=new Peer(PEER_OPTS); NET.peer=peer;
   peer.on('open',id=>{ NET.id=id; const conn=peer.connect('blastoff-arena-'+code,{serialization:'json'}); NET.hostConn=conn;
-    conn.on('open',()=>{ NET.on=true; NET.isHost=false; NET.code=code; conn.send({t:'hello',name:NET.name,color:NET.color}); });
-    conn.on('data',d=>onNet(conn,d)); conn.on('close',()=>{ hostLeft(); }); conn.on('error',()=>setStatus('Connection failed'));
-    setTimeout(()=>{ if(!NET.on)setStatus('No room with that code (or host offline)'); },8000); });
-  peer.on('error',e=>{ setStatus(e.type==='peer-unavailable'?'No room with that code':'Network error: '+e.type); });
+    let failed=false;
+    conn.on('open',()=>{ NET.on=true; NET.isHost=false; NET.code=code; setStatus('Connected!'); conn.send({t:'hello',name:NET.name,color:NET.color}); });
+    conn.on('data',d=>onNet(conn,d)); conn.on('close',()=>{ hostLeft(); }); conn.on('error',()=>{ if(!NET.on)setStatus('Connection failed. Try again.'); });
+    conn.on('iceStateChanged',st=>{ if(!NET.on&&(st==='failed'||st==='closed')){ failed=true; setStatus('Room found, but your networks block a direct connection. Try the same Wi-Fi, or have one of you use a phone hotspot.'); } });
+    setTimeout(()=>{ if(!NET.on&&!failed)setStatus('Room found. Connecting… (this can take up to 20 seconds)'); },4000);
+    setTimeout(()=>{ if(!NET.on&&!failed){ failed=true; setStatus('Could not connect. Your networks are blocking a direct connection: try the same Wi-Fi, or one of you on a phone hotspot.'); } },25000); });
+  peer.on('error',e=>{ setStatus(e.type==='peer-unavailable'?'No room with that code (check the letters, and make sure the host is still in the lobby)':e.type==='network'?'Can\'t reach the matchmaking server. Check your internet.':'Network error: '+e.type); });
 }
 function netSend(m){ if(!NET.on)return; if(NET.isHost){ for(const c of NET.conns)if(c.open)c.send(m); } else if(NET.hostConn&&NET.hostConn.open)NET.hostConn.send(m); }
 function relay(from,m){ for(const c of NET.conns)if(c!==from&&c.open)c.send(m); }
@@ -773,7 +803,7 @@ $('bStart').onclick=()=>{ if(NET.isHost){ if(NET.lobby.length+lobbyOpt.bots<2){ 
 $('bResMenu').onclick=()=>{ if(NET.on){ netReset(); } endToMenu(); };
 $('bResAgain').onclick=()=>{ if(NET.on){ if(NET.isHost){ clearMatch(); netSend({t:'lobbyBack'}); showLobby(); } } else { startSolo(); } };
 function showLobby(){ state='lobby'; clearMatch(); $('menu').classList.remove('hidden'); $('hud').classList.add('hidden'); showPanel('pLobby'); $('code').textContent=NET.code||'----'; $('hostRow').classList.toggle('hidden',!NET.isHost); $('bStart').classList.toggle('hidden',!NET.isHost); renderLobby(); }
-function renderLobby(){ $('lobbyList').innerHTML=NET.lobby.map(l=>`<div class="lp"><span class="dot" style="background:#${new THREE.Color(COLORS[l.color%COLORS.length]).getHexString()}"></span><span>${l.name}</span><span class="tag">${l.id===NET.id?'YOU':''}${NET.isHost&&l.id===NET.id?' · HOST':''}</span></div>`).join(''); $('lobbyStatus').textContent=NET.isHost?(NET.lobby.length<2?'Share the code. Add bots if you want to start now.':NET.lobby.length+' pilots ready'):'Waiting for the host to start…'; }
+function renderLobby(){ $('lobbyList').innerHTML=NET.lobby.map(l=>`<div class="lp"><span class="dot" style="background:#${new THREE.Color(COLORS[l.color%COLORS.length]).getHexString()}"></span><span>${l.name}</span><span class="tag">${l.id===NET.id?'YOU':''}${NET.isHost&&l.id===NET.id?' · HOST':''}</span></div>`).join(''); $('lobbyStatus').textContent=NET.isHost?(NET.lobby.length<2?'Share the code and stay on this screen. Friend stuck on "Connecting"? Try the same Wi-Fi or a phone hotspot.':NET.lobby.length+' pilots ready'):'Waiting for the host to start…'; }
 
 // ============================================================ test hooks
 if(TEST){
