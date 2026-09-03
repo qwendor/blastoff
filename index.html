@@ -646,7 +646,15 @@ function netHost(){
 function netJoin(code){
   if(!window.Peer){setStatus('PeerJS failed to load (offline?)');return;}
   code=code.toUpperCase().trim(); if(code.length!==4){setStatus('Enter the 4-letter code');return;}
-  setStatus('Connecting…'); const peer=new Peer(PEER_OPTS); NET.peer=peer;
+  // Existence check: try to claim the host's id. If it's taken, the room exists; if we get it, nobody is hosting that code.
+  setStatus('Looking for room '+code+'…'); let decided=false; const probe=new Peer('blastoff-arena-'+code,PEER_OPTS);
+  const settle=fn=>{ if(decided)return; decided=true; try{probe.destroy();}catch(x){} fn(); };
+  probe.on('open',()=>settle(()=>setStatus('No room with that code. Check the letters, and make sure the host is still in the lobby.')));
+  probe.on('error',e=>settle(()=>{ if(e.type==='unavailable-id')netConnect(code); else setStatus(e.type==='network'?'Can\'t reach the matchmaking server. Check your internet.':'Network error: '+e.type); }));
+  setTimeout(()=>settle(()=>netConnect(code)),7000);
+}
+function netConnect(code){
+  setStatus('Room found. Connecting…'); const peer=new Peer(PEER_OPTS); NET.peer=peer;
   peer.on('open',id=>{ NET.id=id; const conn=peer.connect('blastoff-arena-'+code,{serialization:'json'}); NET.hostConn=conn;
     let failed=false;
     conn.on('open',()=>{ NET.on=true; NET.isHost=false; NET.code=code; setStatus('Connected!'); conn.send({t:'hello',name:NET.name,color:NET.color}); });
