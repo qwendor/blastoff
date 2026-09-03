@@ -630,7 +630,12 @@ function updateCamera(dt,t){
 // Online play connects players directly (WebRTC). Some networks (campus Wi-Fi, some phone carriers) block direct connections;
 // a TURN relay fixes that. Free option: sign up at https://www.metered.ca/stun-turn (50GB/month), then paste its "turn:" entries here, e.g.
 // const TURN=[{urls:'turn:global.relay.metered.ca:80',username:'...',credential:'...'},{urls:'turn:global.relay.metered.ca:443?transport=tcp',username:'...',credential:'...'}];
-const TURN=[];
+const TURN_USER='cac99fd1809f691ee619c851', TURN_PASS='BFuUCQ9siM/y87si'; // metered.ca app "blastoff-arena", free tier
+const TURN=[{urls:'stun:stun.relay.metered.ca:80'},
+  {urls:'turn:global.relay.metered.ca:80',username:TURN_USER,credential:TURN_PASS},
+  {urls:'turn:global.relay.metered.ca:80?transport=tcp',username:TURN_USER,credential:TURN_PASS},
+  {urls:'turn:global.relay.metered.ca:443',username:TURN_USER,credential:TURN_PASS},
+  {urls:'turns:global.relay.metered.ca:443?transport=tcp',username:TURN_USER,credential:TURN_PASS}];
 const PEER_OPTS={debug:0,config:{iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun.cloudflare.com:3478'},{urls:'stun:stun1.l.google.com:19302'},...TURN]}};
 const NET={on:false,isHost:false,peer:null,conns:[],hostConn:null,id:null,code:null,name:'PILOT',color:0,lobby:[],sendT:0,late:false};
 function genCode(){ const a='ABCDEFGHJKLMNPQRSTUVWXYZ'; let s=''; for(let i=0;i<4;i++)s+=a[Math.floor(Math.random()*a.length)]; return s; }
