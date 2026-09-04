@@ -118,7 +118,7 @@
       <button class="btn" id="bSolo">SOLO vs BOTS</button>
       <button class="btn alt" id="bMulti">MULTIPLAYER</button>
     </div>
-    <div class="row"><button class="btn ghost" id="bHow">HOW TO PLAY</button></div>
+    <div class="row"><button class="btn ghost" id="bHow">HOW TO PLAY</button><button class="btn ghost" id="bPad">🎮 CONTROLLER SETUP</button></div>
     <div class="small">A 3D platform fighter. Every punch raises your rival's <b style="color:#ffd54d">KNOCK %</b>. The higher it climbs, the farther they fly. Send them off the edge to score.</div>
   </div>
 
@@ -167,12 +167,22 @@
       <div><b>SHIFT</b> dash / dodge (invincible during the dash) &nbsp; punch during a dash = <b>tackle</b> &nbsp; <b>Q</b> rocket boost up</div>
       <div><b>E</b> shockwave on the ground, or a <b>slam</b> from the air that shockwaves on landing &nbsp; <b>TAB</b> scores</div>
       <div><b>PADS</b> yellow pads launch you high &nbsp; <b>ORBS</b> wings (+jumps), speed, shield, heal</div>
-      <div><b>🎮</b> controller: sticks move/aim, A jump, RT punch, LT heavy, X dash, Y boost, B slam, RB lock-on</div>
+      <div><b>🎮</b> controller: LEFT stick walk, RIGHT stick camera, A jump, RT punch, LT heavy, X dash, Y boost, B slam, RB lock-on (push right stick hard to break lock). Sticks wrong? CONTROLLER SETUP on the title screen</div>
       <div><b>🌐</b> online: host stays in the lobby, friend enters the code. Stuck connecting? Same Wi-Fi or a phone hotspot fixes strict networks</div>
     </div>
     <div class="small">V toggles the glow effect if your PC struggles. Soundtrack is your track (M mutes). Put a <b>music.mp3</b> next to the game file to play your own track instead.</div>
     <div class="small">There's no health. Hits raise KNOCK %, and knockback scales with it. Fall below the arena and you're KO'd. Most KOs when time runs out wins. Falling with nobody to blame costs a point.</div>
     <div class="row" style="margin-top:12px"><button class="btn ghost" data-back>BACK</button></div>
+  </div>
+
+  <div class="card hidden" id="pPad">
+    <div class="logo" style="font-size:38px">CONTROLLER</div>
+    <div class="sub" id="padStatus">PRESS ANY BUTTON ON THE PAD</div>
+    <div id="padStep" style="margin:18px 0 6px;font-size:22px;font-weight:900;color:#ffd54d;min-height:30px"></div>
+    <div id="padProg" style="font-size:13px;color:#b7a9ff;min-height:18px"></div>
+    <div id="padRaw" class="small" style="font-family:Consolas,monospace;white-space:pre;text-align:left;display:inline-block;min-height:60px"></div>
+    <div class="small">Left stick walks, right stick turns the camera. If a stick does nothing or the wrong one moves, run the 4-step setup. Saved in this browser.</div>
+    <div class="row" style="margin-top:12px"><button class="btn ghost" data-back>BACK</button><button class="btn alt" id="bPadCal">START SETUP</button><button class="btn ghost" id="bPadReset">RESET</button></div>
   </div>
 
   <div class="card hidden" id="pResults">
@@ -182,7 +192,7 @@
   </div>
 </div>
 
-<div id="padChip" class="hidden">🎮 CONTROLLER · D-PAD move · A select · B back · START play</div>
+<div id="padChip" class="hidden">🎮 CONTROLLER · D-PAD move · A select · B back · START play · sticks wrong? CONTROLLER SETUP on the title screen</div>
 <div id="err" class="hidden">BLASTOFF needs an internet connection the first time it loads (it fetches Three.js).<br>Check your connection and reload.</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -736,20 +746,42 @@ document.addEventListener('pointerlockchange',()=>{ locked=document.pointerLockE
 addEventListener('blur',()=>{ for(const k in keys)keys[k]=false; mouseDown=[false,false,false]; });
 // gamepad
 const PAD={on:false,ax:[0,0,0,0],b:[],prev:[],idx:-1};
-function pollPad(dt){ const gps=navigator.getGamepads?navigator.getGamepads():[]; let gp=null; for(const g of gps){ if(g&&g.connected){gp=g;break;} } if(!gp){ if(PAD.on)onPadChange(false); PAD.on=false; return; } if(!PAD.on)onPadChange(true); PAD.on=true; PAD.pad=gp; PAD.prev=PAD.b; PAD.b=gp.buttons.map(b=>b.pressed||b.value>.5); const dz=v=>Math.abs(v)<.18?0:v; PAD.ax=gp.axes.map(dz); }
+function pollPad(dt){ const gps=navigator.getGamepads?navigator.getGamepads():[]; let gp=null; for(const g of gps){ if(g&&g.connected){gp=g;break;} } if(!gp){ if(PAD.on)onPadChange(false); PAD.on=false; return; } PAD.pad=gp; if(!PAD.on)onPadChange(true); PAD.on=true; PAD.prev=PAD.b; PAD.b=gp.buttons.map(b=>b.pressed||b.value>.5); const dz=v=>Math.abs(v)<.18?0:v; PAD.ax=gp.axes.map(dz); }
 const padP=i=>PAD.on&&PAD.b[i]&&!PAD.prev[i];
+// stick axis map: [axisIndex, sign]. Standard layout by default; CONTROLLER SETUP overrides it for pads that report sticks on other axes.
+const PADMAP={lx:[0,1],ly:[1,1],rx:[2,1],ry:[3,1]};
+try{ const m=JSON.parse(localStorage.getItem('blastoff_padmap')||'null'); if(m&&m.lx&&m.ry)Object.assign(PADMAP,m); }catch(e){}
+function axv(k){ const m=PADMAP[k]; const v=PAD.ax[m[0]]; return (v===undefined||isNaN(v))?0:v*m[1]; }
+const CAL_STEPS=[{k:'lx',dir:1,label:'Push the LEFT stick → RIGHT'},{k:'ly',dir:-1,label:'Push the LEFT stick ↑ UP'},{k:'rx',dir:1,label:'Push the RIGHT stick → RIGHT'},{k:'ry',dir:-1,label:'Push the RIGHT stick ↑ UP'}];
+const CAL={on:false,step:0,armed:false,done:false};
+function padSetup(dt){
+  const card=$('pPad'); if(card.classList.contains('hidden'))return;
+  const gp=PAD.pad; $('padStatus').textContent=PAD.on?((gp.id||'controller').slice(0,40).toUpperCase()+(gp.mapping==='standard'?' · standard layout':' · custom layout')):'PRESS ANY BUTTON ON THE PAD';
+  if(!PAD.on){ $('padRaw').textContent=''; return; }
+  const raw=gp.axes.map((v,i)=>'axis'+i+': '+(v>=0?' ':'')+v.toFixed(2)).join('\n');
+  $('padRaw').textContent=raw+'\n\nmapped → walk x '+axv('lx').toFixed(2)+'  walk y '+(-axv('ly')).toFixed(2)+'  look x '+axv('rx').toFixed(2)+'  look y '+(-axv('ry')).toFixed(2);
+  if(!CAL.on){ $('padStep').textContent=CAL.done?'SAVED ✓  try the sticks below':''; $('padProg').textContent='walk = axis '+PADMAP.lx[0]+'/'+PADMAP.ly[0]+' · look = axis '+PADMAP.rx[0]+'/'+PADMAP.ry[0]; return; }
+  const st=CAL_STEPS[CAL.step]; $('padStep').textContent=st.label; $('padProg').textContent='step '+(CAL.step+1)+' of 4';
+  const rawAx=gp.axes; const rest=rawAx.every(v=>Math.abs(v)<.35);
+  if(!CAL.armed){ if(rest)CAL.armed=true; return; }
+  let bi=-1,bv=0; rawAx.forEach((v,i)=>{ if(Math.abs(v)>Math.abs(bv)){bv=v;bi=i;} });
+  if(bi>=0&&Math.abs(bv)>.7){ PADMAP[st.k]=[bi,(bv*st.dir>0)?1:-1]; CAL.step++; CAL.armed=false; AUD.sfx('pick');
+    if(CAL.step>=CAL_STEPS.length){ CAL.on=false; CAL.done=true; localStorage.setItem('blastoff_padmap',JSON.stringify(PADMAP)); $('padStep').textContent='SAVED ✓  try the sticks below'; } }
+}
+function padCalStart(){ CAL.on=true; CAL.step=0; CAL.armed=false; CAL.done=false; }
+function padCalReset(){ Object.assign(PADMAP,{lx:[0,1],ly:[1,1],rx:[2,1],ry:[3,1]}); localStorage.removeItem('blastoff_padmap'); CAL.on=false; CAL.done=false; $('padStep').textContent='RESET TO STANDARD LAYOUT'; }
 const HINT_KB='WASD move · SPACE double jump · LMB punch combo · hold RMB heavy (air: dive kick) · SHIFT dodge · Q boost · E slam · Z lock-on';
 const HINT_PAD='🎮 sticks move / aim · A jump · RT punch · LT heavy (air: dive) · X dodge · Y boost · B slam · RB lock-on · BACK scores';
-function onPadChange(on){ $('padChip').classList.toggle('hidden',!on); $('hint').textContent=on?HINT_PAD:HINT_KB; if(on){ $('lockHint').classList.add('hidden'); if(state==='game'){ msg('🎮 CONTROLLER','A jump · RT punch · LT heavy · X dodge · Y boost · B slam'); } else setPadFocus(null); } }
+function onPadChange(on){ $('padChip').classList.toggle('hidden',!on); $('hint').textContent=on?HINT_PAD:HINT_KB; if(on&&PAD.pad&&PAD.pad.mapping!=='standard'&&!localStorage.getItem('blastoff_padmap')&&state!=='game'){ setTimeout(()=>{ if(state==='menu'){ showPanel('pPad'); } },300); } if(on){ $('lockHint').classList.add('hidden'); if(state==='game'){ msg('🎮 CONTROLLER','A jump · RT punch · LT heavy · X dodge · Y boost · B slam'); } else setPadFocus(null); } }
 // controller menu navigation: d-pad / left stick moves a focus ring, A selects, B backs out, START = play
 let padFocus=null, padRepeat=0;
 function visibleCard(){ return [...document.querySelectorAll('#menu .card')].find(c=>!c.classList.contains('hidden')); }
 function setPadFocus(el){ if(padFocus)padFocus.classList.remove('padfocus'); padFocus=el; if(el){ el.classList.add('padfocus'); el.scrollIntoView&&el.scrollIntoView({block:'nearest'}); } }
 function padMenu(dt){
-  if(!PAD.on||$('menu').classList.contains('hidden'))return; const card=visibleCard(); if(!card)return;
+  if(!PAD.on||$('menu').classList.contains('hidden'))return; const card=visibleCard(); if(!card)return; if(card.id==='pPad'&&CAL.on)return;
   const els=[...card.querySelectorAll('button,.cdot,input')].filter(e=>e.offsetParent!==null&&!e.disabled);
   if(!els.length)return; if(!padFocus||!els.includes(padFocus))setPadFocus(els.find(e=>e.classList.contains('btn')&&!e.classList.contains('ghost'))||els[0]);
-  let dx=0,dy=0; if(PAD.b[14]||PAD.ax[0]<-.5)dx=-1; else if(PAD.b[15]||PAD.ax[0]>.5)dx=1; if(PAD.b[12]||PAD.ax[1]<-.5)dy=-1; else if(PAD.b[13]||PAD.ax[1]>.5)dy=1;
+  let dx=0,dy=0; if(PAD.b[14]||axv('lx')<-.5)dx=-1; else if(PAD.b[15]||axv('lx')>.5)dx=1; if(PAD.b[12]||axv('ly')<-.5)dy=-1; else if(PAD.b[13]||axv('ly')>.5)dy=1;
   padRepeat-=dt;
   if((dx||dy)&&padRepeat<=0){ padRepeat=.24; const r=padFocus.getBoundingClientRect(); const cx=r.left+r.width/2, cy=r.top+r.height/2; let best=null,bd=1e9;
     for(const e of els){ if(e===padFocus)continue; const q=e.getBoundingClientRect(); const ex=q.left+q.width/2-cx, ey=q.top+q.height/2-cy; const along=dx?ex*dx:ey*dy; const off=dx?Math.abs(ey):Math.abs(ex); if(along<6)continue; const sc=along+off*(dx?1.6:.6); if(sc<bd){bd=sc;best=e;} }
@@ -769,7 +801,7 @@ function localInput(dt){
   // lock-on: Z / middle mouse / RB cycles targets, camera and attacks face the target
   if(pressed['z']||mousePressed[1]||padP(5)){ const foes=players.filter(q=>q!==me&&alive(q)).sort((a,b)=>a.pos.distanceTo(me.pos)-b.pos.distanceTo(me.pos)); if(!foes.length)me.lock=null; else if(!me.lock)me.lock=foes[0]; else { const i=foes.indexOf(me.lock); me.lock=(i<0)?foes[0]:(i===foes.length-1?null:foes[i+1]); } if(me.lock)AUD.sfx('pick'); }
   if(me.lock&&(!alive(me.lock)||players.indexOf(me.lock)<0||me.lock.pos.distanceTo(me.pos)>60))me.lock=null;
-  if(PAD.on){ inp.mx+=PAD.ax[0]; inp.mz-=PAD.ax[1]; if(!me.lock)me.yaw-=PAD.ax[2]*3.2*dt*(1+Math.abs(PAD.ax[2])); me.pitch-=PAD.ax[3]*2.2*dt; }
+  if(PAD.on){ const lx=axv('lx'),ly=axv('ly'),rx=axv('rx'),ry=axv('ry'); inp.mx+=lx; inp.mz-=ly; if(me.lock&&Math.abs(rx)>.75){ me.lockBreak=(me.lockBreak||0)+dt; if(me.lockBreak>.2){ me.lock=null; me.lockBreak=0; } } else me.lockBreak=0; if(!me.lock)me.yaw-=rx*3.2*dt*(1+Math.abs(rx)); me.pitch-=ry*2.2*dt; }
   if(me.lock){ const dx=me.lock.pos.x-me.pos.x, dz=me.lock.pos.z-me.pos.z, dy=me.lock.pos.y-me.pos.y; const k=1-Math.exp(-dt*12); me.yaw=angLerp(me.yaw,yawTo(dx,dz),k); me.pitch=lerp(me.pitch,clamp(Math.atan2(dy,Math.max(2,Math.hypot(dx,dz)))*.7-.12,-.9,.5),k); lookX=0; me.pitch-=lookY*.001; }
   else { me.yaw-=lookX*.0022; me.pitch-=lookY*.0022; }
   lookX=lookY=0; me.pitch=clamp(me.pitch,-1.25,1.25);
@@ -945,7 +977,7 @@ function updateHUD(dt){
 // ============================================================ main loop
 let simT=0;
 function update(dt){
-  simT+=dt; pollPad(dt); padMenu(dt); if(PAD.on&&state==='game')showBoard=!!PAD.b[8]||keys['tab'];
+  simT+=dt; pollPad(dt); padMenu(dt); padSetup(dt); if(PAD.on&&state==='game')showBoard=!!PAD.b[8]||keys['tab'];
   updateMovers(simT);
   for(const d of deco){ d.rotation.y+=d.userData.spin*dt; d.position.y=d.userData.y+Math.sin(simT*.4+d.userData.bob)*1.2; }
   for(const c of clouds){ const u=c.userData; u.a+=u.spd*dt; c.position.set(Math.cos(u.a)*u.r,u.y+Math.sin(simT*.3+u.bob)*.6,Math.sin(u.a)*u.r); }
@@ -995,7 +1027,7 @@ segWire('segSkinSolo',v=>{ solo.skin=+v; $('skinBlurbSolo').textContent=SKINS[+v
 $('skinBlurbSolo').textContent=SKINS[0].name+': '+SKINS[0].blurb; $('skinBlurbMulti').textContent=SKINS[0].name+': '+SKINS[0].blurb;
 function colorPicker(id,cb,init){ const el=$(id); el.innerHTML=''; COLORS.forEach((c,i)=>{ const d=document.createElement('div'); d.className='cdot'+(i===init?' on':''); d.style.background='#'+new THREE.Color(c).getHexString(); d.onclick=()=>{ el.querySelectorAll('.cdot').forEach(x=>x.classList.remove('on')); d.classList.add('on'); cb(i); }; el.appendChild(d); }); }
 colorPicker('colSolo',i=>solo.color=i,0); colorPicker('colMulti',i=>NET.color=i,1); NET.color=1;
-$('bSolo').onclick=()=>showPanel('pSolo'); $('bMulti').onclick=()=>{ showPanel('pMulti'); setStatus(''); }; $('bHow').onclick=()=>showPanel('pHow');
+$('bSolo').onclick=()=>showPanel('pSolo'); $('bMulti').onclick=()=>{ showPanel('pMulti'); setStatus(''); }; $('bHow').onclick=()=>showPanel('pHow'); $('bPad').onclick=()=>{ showPanel('pPad'); CAL.on=false; }; $('bPadCal').onclick=padCalStart; $('bPadReset').onclick=padCalReset;
 $('bSoloGo').onclick=()=>{ AUD.init(); startSolo(); };
 $('bHost').onclick=()=>{ NET.name=($('inName').value.trim()||'PILOT').toUpperCase().slice(0,12); AUD.init(); netHost(); };
 $('bJoin').onclick=()=>{ NET.name=($('inName').value.trim()||'PILOT').toUpperCase().slice(0,12); AUD.init(); netJoin($('inCode').value); };
